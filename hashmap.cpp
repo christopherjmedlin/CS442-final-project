@@ -32,7 +32,7 @@ int hash(int* neighborhood, int size) {
     return h % M;
 }
 
-int lookup(HashMap m, int size, int* key, int keySize, int val) {
+int hm_lookup(HashMap m, int size, int* key, int keySize, int val) {
     int i = hash(key, keySize) % size;
     Node* n = m[i];
     while (n != 0) {
@@ -45,7 +45,7 @@ int lookup(HashMap m, int size, int* key, int keySize, int val) {
     return -1;
 }
 
-void insert(HashMap m, int size, int* key, int keySize, int val) {
+void hm_insert(HashMap m, int size, int* key, int keySize, int val) {
     int i = hash(key, keySize) % size;
     Node* n = (Node*) malloc(sizeof(Node));
     n->key = key;
