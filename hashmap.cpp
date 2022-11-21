@@ -7,18 +7,14 @@
 
 #include <math.h>
 
-typedef struct Node {
-    int* key;
-    int val;
-    Node* next;
-} Node;
-
 typedef Node** HashMap;
 
 HashMap hm_init(int size) {
-    HashMap hm = (Node**) malloc(size * sizeof(Node*));
+    HashMap hm = malloc(sizeof(HashMap));
+    hm.size = size;
+    hm.nodes = (Node**) malloc(size * sizeof(Node*));
     for (int i = 0; i < size; i++) {
-        hm[i] = 0;
+        hm.nodes[i] = 0;
     } 
     return hm;
 }
@@ -34,7 +30,7 @@ int hash(int* neighborhood, int size) {
 
 int hm_lookup(HashMap m, int size, int* key, int keySize, int val) {
     int i = hash(key, keySize) % size;
-    Node* n = m[i];
+    Node* n = m.nodes[i];
     while (n != 0) {
         for (int i = 0; i < keySize; i++) {
             if (n->key[i] != key[i]) break;
@@ -51,8 +47,8 @@ void hm_insert(HashMap m, int size, int* key, int keySize, int val) {
     n->key = key;
     n->val = val;
     n->next = 0;
-    if (m[i] == 0) {
-        m[i] = n;
+    if (m.nodes[i] == 0) {
+        m.nodes[i] = n;
         return;
     }
     Node* c = m[i];
@@ -60,4 +56,21 @@ void hm_insert(HashMap m, int size, int* key, int keySize, int val) {
         c = c->next; 
     }
     c->next = n;
+}
+
+void hm_free(HashMap m) {
+    for (int i = 0; i < m.size; i++) {
+        ll_free(m.nodes[i]);
+    }
+    free(m.nodes);
+    free(m);
+}
+
+void ll_free(Node* n) {
+    Node* prev;
+    while (n != 0) {
+        prev = n; 
+        n = n->next;
+        free(prev); 
+    }
 }
