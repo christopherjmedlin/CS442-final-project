@@ -1,3 +1,6 @@
+#ifndef HASHMAPH
+#define HASHMAPH
+
 #include <math.h>
 
 typedef struct Node {
@@ -18,3 +21,5 @@ int hm_lookup(HashMap* m, int size, int* key, int keySize, int val);
 void hm_insert(HashMap* m, int size, int* key, int keySize, int val);
 
 void hm_free(HashMap* m);
+
+#endif

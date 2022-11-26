@@ -18,11 +18,21 @@ HashMap* hm_init(int size) {
     return hm;
 }
 
+int mod_pow(int p, int n, int m) {
+    int res = 1;
+    for (int i = 1; i <= n; i++) {
+        res *= p; 
+        res %= m;
+    }
+    return res; 
+}
+
 // keep this simple for now
 int hash(int* neighborhood, int size) {
     int h = 0;
     for (int i = 0; i < size; i++) {
-        h += neighborhood[i] * pow(P, i);
+        h += neighborhood[i] * mod_pow(P, i, M);
+        h %= M;
     }
     return h % M;
 }
@@ -59,8 +69,9 @@ void hm_insert(HashMap* m, int size, int* key, int keySize, int val) {
 
 void ll_free(Node* n) {
     Node* prev;
+    prev = n; 
     while (n != 0) {
-        prev = n; 
+        free(n->key);
         n = n->next;
         free(prev); 
     }
