@@ -237,10 +237,8 @@ void get_neighbors(int* neighbors, int rank, int n_procs)
     neighbors[7] = (row<(ppl-1) && col<(ppl-1))? rank+ppl+1 : ((row<(ppl-1))? rank+1 : ((col<(ppl-1))? col+1: 0));// down right
 }
 
-int main(int argc, char* argv[])
-{
+void start() {
     int size, rank;
-    MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -384,6 +382,35 @@ int main(int argc, char* argv[])
     delete [] d_edge_recv;
     delete [] r_edge_recv;
     delete [] l_edge_recv;
+    
+    hm_free(rt); 
+    free(init_state);
+}
+
+int main(int argc, char* argv[])
+{
+    MPI_Init(&argc, &argv);
+
+    int hasN = 0, hasI = 0;
+    int n, i;
+    
+    while ((c = getopt(argc, argv, "n:i:")) != -1) {
+        switch (c) {
+            case 'n':
+                n = atoi(optarg);
+                hasN = true;
+                break;
+            case 'i':
+                i = atoi(optarg);
+                hasI = true;
+                break;
+        }
+    }
+
+    if (!hasN || !hasI) {
+        printf("Missing arguments.");
+        return 1;
+    }
 
     MPI_Finalize();
     return 0;

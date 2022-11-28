@@ -31,30 +31,45 @@ HashMap* parse_rule_map(int* buf, int count, int neighborhood_size) {
     return hm;
 }
 
+MPI_Datatype get_subarray_type(int size, int local_size, int row, int col) {
+    MPI_Datatype dt;
+    int sizes[2] = {size, size};
+    int subsizes[2] = {local_size, local_size};
+    int starts[2] = {row * local_size, col * local_size};
+    MPI_Type_create_subarray(2, sizes, subsizes, starts,
+                             MPI_ORDER_C, MPI_INTEGER, &dt);
+    MPI_Type_commit(&dt);
+    return dt;
+}
+
 int* load_init_state(char* path, int size) {
     int n, row, col, local_size;
     int* buf;
     int procs, rank;
     MPI_Status stat;
     MPI_File fh;
-    MPI_Datatype vec;
+    MPI_Datatype subarr;
 
     MPI_Comm_size(MPI_COMM_WORLD, &procs);
     n = sqrt(procs);
     local_size = size / n;
     buf = (int*) malloc(sizeof(int) * local_size);
 
-    MPI_Type_vector(local_size, local_size * n, 1, MPI_INTEGER, &vec);
-    MPI_Type_commit(&vec);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     row = rank / n;
     col = rank % n;
+    subarr = get_subarray_type(size, local_size, row, col);
     MPI_File_open(MPI_COMM_WORLD, path, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
-    MPI_File_seek(
-            fh,
-            4 * (local_size * local_size * n * row + local_size * col),
-            MPI_SEEK_SET
-    );
+    //int disp = 4 * (local_size * local_size * n * row + local_size * col);
+    MPI_File_set_view(fh, 0, MPI_INTEGER, subarr, "native", MPI_INFO_NULL);
     MPI_File_read_all(fh, buf, local_size*local_size, MPI_INTEGER, &stat); 
     return buf;
+}
+
+int* write_state(char* path, int size, int* state) {
+    int n, row, col, local_size;
+    int procs, rank;
+    MPI_Status stat;
+    MPI_File fh;
+    MPI_Datatype vec;
 }
