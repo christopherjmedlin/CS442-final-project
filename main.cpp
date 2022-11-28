@@ -251,6 +251,7 @@ int main(int argc, char* argv[])
     int* grid = new int[TOTAL_GRID_SIZE]{0};
 
     HashMap* rt = load_rule_map("utils/genlife/gol.table");
+    int* init_state = load_init_state("test2.bin", 4);
 
     if (rank == 0)
     {
