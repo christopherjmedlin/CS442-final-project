@@ -27,7 +27,6 @@ int mod_pow(int p, int n, int m) {
     return res; 
 }
 
-// keep this simple for now
 int hash(int* neighborhood, int size) {
     int h = 0;
     for (int i = 0; i < size; i++) {
@@ -37,8 +36,8 @@ int hash(int* neighborhood, int size) {
     return h % M;
 }
 
-int hm_lookup(HashMap* m, int size, int* key, int keySize, int val) {
-    int i = hash(key, keySize) % size;
+int hm_lookup(HashMap* m, int* key, int keySize) {
+    int i = hash(key, keySize) % m->size;
     Node* n = m->nodes[i];
     while (n != 0) {
         for (int i = 0; i < keySize; i++) {
@@ -50,8 +49,8 @@ int hm_lookup(HashMap* m, int size, int* key, int keySize, int val) {
     return -1;
 }
 
-void hm_insert(HashMap* m, int size, int* key, int keySize, int val) {
-    int i = hash(key, keySize) % size;
+void hm_insert(HashMap* m, int* key, int keySize, int val) {
+    int i = hash(key, keySize) % m->size;
     Node* n = (Node*) malloc(sizeof(Node));
     n->key = key;
     n->val = val;

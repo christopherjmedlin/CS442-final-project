@@ -16,9 +16,9 @@ typedef struct HashMap {
 
 HashMap* hm_init(int size);
 
-int hm_lookup(HashMap* m, int size, int* key, int keySize, int val);
+int hm_lookup(HashMap* m, int* key, int keySize);
 
-void hm_insert(HashMap* m, int size, int* key, int keySize, int val);
+void hm_insert(HashMap* m, int* key, int keySize, int val);
 
 void hm_free(HashMap* m);
 

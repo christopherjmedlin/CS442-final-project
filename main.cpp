@@ -156,64 +156,29 @@ void draw_grid(int* grid, int edge_length)
     printf(C_RST);
 }
 
+void get_cell_neighbors(int* grid, int n, int i, int j, int* neighbors) {
+    neighbors[0] = grid[i*n+j-1];
+    neighbors[1] = grid[(i-1)*n+j-1];
+    neighbors[2] = grid[(i-1)*n+j];
+    neighbors[3] = grid[(i-1)*n+j+1];
+    neighbors[4] = grid[i*n + j+1];
+    neighbors[5] = grid[(i+1)*n + j+1];
+    neighbors[6] = grid[(i+1)*n + j];
+    neighbors[7] = grid[(i+1)*n + (j-1)];
+}
+
 /*
 Updates local grid. This just makes the most sense in my brain, it feels sloppy though. 
 Need to think of a way to consider the corners and edges without needing to copy the whole graph.
 */
 
-void update_local_grid(int* g, int width, int ul, int ur, int dl, int dr, int* ups, int* downs, int* lefts, int* rights)
-{
-    int size = (width+2)*(width+2);
-    int* cg = new int[size];
-
-    /* Builds local portion of grid while considering the neighboring processes corner/edge values */
-    for (int y = 0; y < (width + 2); y++)
-    {
-        for (int x = 0; x < (width + 2); x++)
-        {
-            if (x == 0 && y == 0) // Upper left corner
-                cg[0] = ul;
-            else if (x == 0 && y == width + 1)         // Lower left corner
-                cg[size-(width+2)] = dl;
-            else if (x == 0)                           // Left edge
-                cg[y*(width+2)] = lefts[y-1];
-            else if (y == 0 && x == width + 1)         // Upper right corner
-                cg[width+1] = ur; 
-            else if (x == width + 1 && y == width + 1) // Lower right corner
-                cg[size-1] = dr;
-            else if (y == width + 1)                   // Lower edge
-                cg[size-(width+2)+x] = downs[x-1];
-            else if (y == 0)                           // Upper edge
-                cg[x] = ups[x-1];
-            else if (x == width + 1)                   // Right edge
-                cg[(y+1)*(width+2)-1] = rights[y-1];
-            else                                       // Local grid
-                cg[y*(width+2)+x] = g[(y-1)*width+(x-1)];
+void update_state(int* grid, int local_n, HashMap* rt, int* neighbors) {
+    for (int i = 1; i < local_n+1; i++) {
+        for (int j = 1; j < local_n+1; j++) {
+            get_cell_neighbors(grid, local_n, i, j, neighbors);                    
+            grid[i*local_n+j] = hm_lookup(rt, neighbors, 8);
         }
     }
-    /* checks each individual cell in local portion to see if it should die or live. */
-    int s;
-    for (int y = 1; y <= width; y++)
-    {
-        for (int x = 1; x <= width; x++)
-        {
-            /* Sum up values of neighboring cells to check for death */
-            s = cg[(y-1)*(width+2)+x-1] + // Upper left corner
-                cg[(y-1)*(width+2)+x] +   // Upper edge
-                cg[(y-1)*(width+2)+x+1] + // Upper right corner
-                cg[y*(width+2)+x-1] +     // Left edge
-                cg[y*(width+2)+x+1] +     // Right edge
-                cg[(y+1)*(width+2)+x-1] + // Lower left corner
-                cg[(y+1)*(width+2)+x] +   // Lower edge
-                cg[(y+1)*(width+2)+x+1];  // Lower right corner
-            /* Apply GOL rules */
-            if (s < 2 || s > 3 || (s == 2 && cg[y*(width+2)+x] == 0))
-                g[(y-1)*width+(x-1)] = 0; // kill the cell
-            else
-                g[(y-1)*width+(x-1)] = 1; // let the cell live
-        }
-    }
-    delete [] cg;
 }
 
 /*
@@ -230,161 +195,112 @@ void get_neighbors(int* neighbors, int rank, int n_procs)
     neighbors[0] = (row && col)? rank-ppl-1 : (row? rank-1: (col? (ppl*(ppl-1)+col-1) : n_procs-1)); // up left
     neighbors[1] = (row)? rank-ppl: (ppl*(ppl-1)+col); // up
     neighbors[2] = (row && (col<(ppl-1)))? rank-ppl+1 : (row? (row-1)*ppl : ((col<(ppl-1))? ppl*(ppl-1)+col+1  : ppl*(ppl-1)));  // up right
-    neighbors[3] = (col)? rank-1 : rank+ppl-1 ; // left
-    neighbors[4] = (col<(ppl-1))? rank+1 : rank-ppl+1; // right
-    neighbors[5] = (col && (row<(ppl-1)))? rank+ppl-1 : (col? col-1 : ((row<(ppl-1))? ((row+2)*ppl)-1  : ppl-1 )); // down left
-    neighbors[6] = (row<(ppl-1))? rank+ppl : col; // down
-    neighbors[7] = (row<(ppl-1) && col<(ppl-1))? rank+ppl+1 : ((row<(ppl-1))? rank+1 : ((col<(ppl-1))? col+1: 0));// down right
+    neighbors[7] = (col)? rank-1 : rank+ppl-1 ; // left
+    neighbors[3] = (col<(ppl-1))? rank+1 : rank-ppl+1; // right
+    neighbors[6] = (col && (row<(ppl-1)))? rank+ppl-1 : (col? col-1 : ((row<(ppl-1))? ((row+2)*ppl)-1  : ppl-1 )); // down left
+    neighbors[5] = (row<(ppl-1))? rank+ppl : col; // down
+    neighbors[4] = (row<(ppl-1) && col<(ppl-1))? rank+ppl+1 : ((row<(ppl-1))? rank+1 : ((col<(ppl-1))? col+1: 0));// down right
+
+    for (int i = 0; i < 8; i++) {
+        printf("Rank: %d, Neighbors: %d %d", rank, i, neighbors[i]);
+    }
 }
 
-void start() {
+int* unembed(int* old, int n) {
+    int* new_grid = (int*) malloc(sizeof(int) * n * n);
+    int size = (n+2) * (n+2);
+    int new_size = n * n;
+    for (int i = 1; i < n+1; i++) {
+        for (int j = 1; j < n+1; j++) {
+            new_grid[(i-1)*new_size + (j-1)] = old[i*size+j]; 
+        }
+    }
+    free(old);
+    return new_grid;
+}
+
+// embed the n*n state into a larger one (n+2)*(n+2) array (for the boundaries)
+int* embed(int* old, int n) {
+    int* new_grid = (int*) malloc(sizeof(int) * (n+2) * (n+2));
+    int size = n * n;
+    int new_size = (n+2) * (n+2);
+    for (int i = 1; i < n+1; i++) {
+        for (int j = 1; j < n+1; j++) {
+            new_grid[i*(n+2) + j] = old[(i-1)*(n+2) + j-1];
+        }
+    }
+
+    free(old);
+    return new_grid;
+}
+
+void start(int n, int i) {
     int size, rank;
+    MPI_Status stat;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    const int local_grid_size = TOTAL_GRID_SIZE / size;
-    const int local_edge_length = (int)sqrt(local_grid_size); // Length of one "edge" of the local grid
-
-    int* local_grid = new int[local_grid_size];
-    int* grid = new int[TOTAL_GRID_SIZE]{0};
-
     HashMap* rt = load_rule_map("utils/genlife/gol.table");
-    int* init_state = load_init_state("test2.bin", 4);
+    int* init_state = load_init_state("test2.bin", n);
+    int* state = embed(init_state, n);
+    int current_iter = 0;
+    int* neighbors = (int*) malloc(sizeof(int) * 8);
+    int* cell_neighbors = (int*) malloc(sizeof(int) * 8);
+    int local_n = n / sqrt(size);
+    get_neighbors(neighbors, rank, size);
 
-    if (rank == 0)
-    {
-        if (!START_RANDOM) // Start with a glider if we don't want a random start
-        {
-            grid[GRID_WIDTH+3] = 1;
-            grid[GRID_WIDTH*2+1] = 1;
-            grid[GRID_WIDTH*2+3] = 1;
-            grid[GRID_WIDTH*3+2] = 1;
-            grid[GRID_WIDTH*3+3] = 1;
-        } 
-        else // Randomly fill the grid in with either 1's or 0's
-        {
-            srand(time(NULL));
-            for (int i = 0; i < TOTAL_GRID_SIZE; i++)
-            {
-                grid[i] = rand() % 2;
-            }
-        }
+    MPI_Request requests[] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+    
+    // init datatypes
+    MPI_Datatype row, col;
+    MPI_Type_contiguous(n, MPI_INTEGER, &row);
+    MPI_Type_vector(n, 1, n + 2, MPI_INTEGER, &col);
+    MPI_Type_commit(&row);
+    MPI_Type_commit(&col);
+    
+    while (current_iter < i) {
+        MPI_Isend(&(state[n + 3]), 1, row, neighbors[1], TAG_UP,
+                  MPI_COMM_WORLD, &(requests[0]));
+        MPI_Isend(state + 2*n + 2, 1, MPI_INTEGER, neighbors[2], TAG_UR,
+                  MPI_COMM_WORLD, &(requests[1]));
+        MPI_Isend(state + 2*n + 2, 1, col, neighbors[3], TAG_RI,
+                  MPI_COMM_WORLD, &(requests[2]));
+        MPI_Isend(state + (n+2)*n + (n+1), 1, col, neighbors[4], TAG_DR,
+                  MPI_COMM_WORLD, &(requests[3]));
+        MPI_Isend(state + (n+2)*n + 1, 1, row, neighbors[5], TAG_DO,
+                  MPI_COMM_WORLD, &(requests[4]));
+        MPI_Isend(state + (n+2)*n + 1, 1, MPI_INTEGER, neighbors[6], TAG_DL,
+                  MPI_COMM_WORLD, &(requests[5]));
+        MPI_Isend(state + n + 3, 1, col, neighbors[7], TAG_LE,
+                  MPI_COMM_WORLD, &(requests[6]));
+        MPI_Isend(state + n + 3, 1, col, neighbors[0], TAG_UL,
+                  MPI_COMM_WORLD, &(requests[7]));
 
-        to_array(grid, local_edge_length); // Reorganizes the "grid" contents to more easily distribute the data.
+        MPI_Recv(&state[1], 1, row, neighbors[1],
+                 TAG_DO, MPI_COMM_WORLD, &stat);
+        MPI_Recv(state + n + 1, 1, MPI_INTEGER, neighbors[2],
+                 TAG_DL, MPI_COMM_WORLD, &stat);
+        MPI_Recv(state + 2*n + 3, 1, col, neighbors[3],
+                 TAG_LE, MPI_COMM_WORLD, &stat);
+        MPI_Recv(state + (n+3)*(n+1), 1, MPI_INTEGER, neighbors[4],
+                 TAG_UL, MPI_COMM_WORLD, &stat);
+        MPI_Recv(state + (n+2)*(n+1) + 1, 1, row, neighbors[5],
+                 TAG_UP, MPI_COMM_WORLD, &stat);
+        MPI_Recv(state + (n+2)*(n+1), 1, MPI_INTEGER, neighbors[6],
+                 TAG_UR, MPI_COMM_WORLD, &stat);
+        MPI_Recv(state + (n+2), 1, col, neighbors[7],
+                 TAG_RI, MPI_COMM_WORLD, &stat);
+        MPI_Recv(state, 1, MPI_INTEGER, neighbors[0],
+                TAG_DR, MPI_COMM_WORLD, &stat);
+
+        update_state(state, local_n, rt, cell_neighbors);
+        current_iter++;
     }
 
-    /* 
-    Distribute the "local" portions of the grid to all the processes. 
-    This and the above "to_array" call can likely be negated with MPI_datatype implementaions. 
-    */
-    MPI_Scatter(grid, local_grid_size, MPI_INT, local_grid, local_grid_size, MPI_INT, 0, MPI_COMM_WORLD);
-
-    printf("[%d][%d]: Local grid size = %dx%d\n",rank,size,local_edge_length,local_edge_length);
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    int* neighbors = new int[8]{0};
-    get_neighbors(neighbors, rank, size); // Determine neighboring processes
-
-    /* Upper left corner, Upper right corner, lower left corner, lower right corner*/
-    int u_left, u_right, d_left, d_right; 
-    int* u_edge = new int[local_edge_length]; // Upper edge to send
-    int* d_edge = new int[local_edge_length]; // Lower edge to send
-    int* l_edge = new int[local_edge_length]; // Left edge to send
-    int* r_edge = new int[local_edge_length]; // Right edge to send
-    int* u_edge_recv = new int[local_edge_length]; // Recv buffer for Upper edge
-    int* d_edge_recv = new int[local_edge_length]; // Recv buffer for lower edge
-    int* l_edge_recv = new int[local_edge_length]; // Recv buffer for left edge
-    int* r_edge_recv = new int[local_edge_length]; // Recv buffer for right edge
-
-    /* Super lax timing stuff just to have it */
-    double start, end;
-    MPI_Barrier(MPI_COMM_WORLD);
-    start = MPI_Wtime();
-
-    for (int gen = 0; gen < N_GENERATIONS; gen++) // Loop through number of generations
-    {
-        MPI_Barrier(MPI_COMM_WORLD);
-        /* Gather portions of grid */
-        MPI_Gather(local_grid, local_grid_size, MPI_INT, grid, local_grid_size, MPI_INT, 0, MPI_COMM_WORLD);
-
-        if (rank == 0 && gen%81 == 0) // Have grid printed out. Once again, could poll this less often
-        {
-            to_grid(grid, local_edge_length);
-            draw_grid(grid, local_edge_length);
-            printf("Generation %d|%d\n",gen, N_GENERATIONS-1);
-        }
-        
-        /* Get edge values from local grid */
-        for (int i = 0; i < local_edge_length; i++)
-        {
-            u_edge[i] = local_grid[i];
-            l_edge[i] = local_grid[i*local_edge_length];
-            r_edge[i] = local_grid[(i+1)*local_edge_length-1];
-            d_edge[i] = local_grid[local_grid_size-local_edge_length+i];
-        }
-
-        /* Send local corners to other processes */
-        MPI_Send(&local_grid[0], 1, MPI_INT, neighbors[0], TAG_DR, MPI_COMM_WORLD); // Send upper left corner to lower right neighbor
-        MPI_Send(&local_grid[local_edge_length-1], 1, MPI_INT, neighbors[2], TAG_DL, MPI_COMM_WORLD);  // Send upper right corner to lower left neighbor
-        MPI_Send(&local_grid[local_grid_size-local_edge_length], 1, MPI_INT, neighbors[5], TAG_UR, MPI_COMM_WORLD); // Send lower left corner to upper right neighbor
-        MPI_Send(&local_grid[local_grid_size - 1], 1, MPI_INT, neighbors[7], TAG_UL, MPI_COMM_WORLD); // Send lower right corner to upper left neighbor
-/*
-        for (int i = 0; i < local_edge_length; i++)
-        {
-            u_edge[i] = local_grid[i];
-            l_edge[i] = local_grid[i*local_edge_length];
-            r_edge[i] = local_grid[(i+1)*local_edge_length-1];
-            d_edge[i] = local_grid[local_grid_size-local_edge_length+i];
-        }
-*/
-        /* Send edge values to other processes */
-        MPI_Send(u_edge, local_edge_length, MPI_INT, neighbors[1], TAG_DO, MPI_COMM_WORLD); // Send upper edge to lower neighbor
-        MPI_Send(l_edge, local_edge_length, MPI_INT, neighbors[3], TAG_RI, MPI_COMM_WORLD); // Send left edge to right neighbor
-        MPI_Send(r_edge, local_edge_length, MPI_INT, neighbors[4], TAG_LE, MPI_COMM_WORLD); // Send right edge to left neighbor
-        MPI_Send(d_edge, local_edge_length, MPI_INT, neighbors[6], TAG_UP, MPI_COMM_WORLD); // Send lower edge to upper neighbor
-
-        /* Recv corner values from other processes */
-        MPI_Recv(&u_left, 1, MPI_INT, neighbors[0], TAG_UL, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // Recv Upper left corner value
-        MPI_Recv(&u_right, 1, MPI_INT, neighbors[2], TAG_UR, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // Recv Upper right corner value
-        MPI_Recv(&d_left, 1, MPI_INT, neighbors[5], TAG_DL, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // Recv Lower left corner value
-        MPI_Recv(&d_right, 1, MPI_INT, neighbors[7], TAG_DR, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // Recv Lower right corner value
-        
-        MPI_Recv(u_edge_recv, local_edge_length, MPI_INT, neighbors[1], TAG_UP, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // Recv Upper edge
-        MPI_Recv(d_edge_recv, local_edge_length, MPI_INT, neighbors[6], TAG_DO, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // Recv Lower edge
-        MPI_Recv(l_edge_recv, local_edge_length, MPI_INT, neighbors[3], TAG_LE, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // Recv Left edge
-        MPI_Recv(r_edge_recv, local_edge_length, MPI_INT, neighbors[4], TAG_RI, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // Recv Right edge
-
-        /* Copy recv buffer into send buffer for use in next iteration */
-        std::copy(u_edge_recv, u_edge_recv+local_edge_length, u_edge);
-        std::copy(d_edge_recv, d_edge_recv+local_edge_length, d_edge);
-        std::copy(r_edge_recv, r_edge_recv+local_edge_length, r_edge);
-        std::copy(l_edge_recv, l_edge_recv+local_edge_length, l_edge);
-
-        /* Set local grid up for next iteration of game of life based on neighboring edges/corners */
-        update_local_grid(local_grid, local_edge_length, u_left, u_right, d_left, d_right, u_edge, d_edge, l_edge, r_edge);
-
-        /* Delay for printing the results more slowly */
-        usleep(GEN_DELAY_MS*1000);
-    }
-    MPI_Barrier(MPI_COMM_WORLD);
-    end = MPI_Wtime(); // end timer
-
-    printf("Runtime: %f\n",end-start);
-
-    delete [] local_grid;
-    delete [] grid;
-    delete [] neighbors;
-    delete [] u_edge;
-    delete [] d_edge;
-    delete [] r_edge;
-    delete [] l_edge;
-    delete [] u_edge_recv;
-    delete [] d_edge_recv;
-    delete [] r_edge_recv;
-    delete [] l_edge_recv;
     
     hm_free(rt); 
-    free(init_state);
+    free(state);
+    free(neighbors);
 }
 
 int main(int argc, char* argv[])
@@ -393,6 +309,7 @@ int main(int argc, char* argv[])
 
     int hasN = 0, hasI = 0;
     int n, i;
+    char c = 0;
     
     while ((c = getopt(argc, argv, "n:i:")) != -1) {
         switch (c) {
@@ -412,6 +329,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    start(n, i);
     MPI_Finalize();
     return 0;
 }

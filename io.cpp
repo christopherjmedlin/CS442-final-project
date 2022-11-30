@@ -26,7 +26,7 @@ HashMap* parse_rule_map(int* buf, int count, int neighborhood_size) {
             neighborhood[j] = buf[i*(neighborhood_size+1)+j];
         }
         int val = buf[i*(neighborhood_size+1)+neighborhood_size];
-        hm_insert(hm, count, neighborhood, neighborhood_size, val);
+        hm_insert(hm, neighborhood, neighborhood_size, val);
     }
     return hm;
 }
@@ -66,10 +66,23 @@ int* load_init_state(char* path, int size) {
     return buf;
 }
 
-int* write_state(char* path, int size, int* state) {
+void write_state(char* path, int size, int* state) {
     int n, row, col, local_size;
     int procs, rank;
     MPI_Status stat;
     MPI_File fh;
-    MPI_Datatype vec;
+    MPI_Datatype subarr;
+
+    MPI_Comm_size(MPI_COMM_WORLD, &procs);
+    n = sqrt(procs);
+    local_size = size / n;
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    row = rank / n;
+    col = rank % n;
+    subarr = get_subarray_type(size, local_size, row, col);
+    MPI_File_open(MPI_COMM_WORLD, path, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh);
+
+    MPI_File_set_view(fh, 0, MPI_INTEGER, subarr, "native", MPI_INFO_NULL);
+    MPI_File_write_all(fh, state, local_size * local_size, MPI_INTEGER, &stat);
 }
