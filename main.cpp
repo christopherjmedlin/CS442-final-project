@@ -28,6 +28,14 @@ const char *ARR_COLORS[] = {// Background colors to use for coloring sub grids
     "\033[48;5;218m"        // ROSE
 };
 
+struct State {
+    int* main_grid;
+    int* top;
+    int* right;
+    int* bottom;
+    int* left;
+};
+
 #define NUM_COLORS (sizeof(ARR_COLORS) / sizeof(const char *)) // Get the size of ARR_COLORS
 
 #define S_TOPLEFT "\033[H"        // Set cursor to top left
@@ -156,15 +164,41 @@ void draw_grid(int* grid, int edge_length)
     printf(C_RST);
 }
 
-void get_cell_neighbors(int* grid, int n, int i, int j, int* neighbors) {
-    neighbors[0] = grid[i*n+j-1];
-    neighbors[1] = grid[(i-1)*n+j-1];
-    neighbors[2] = grid[(i-1)*n+j];
-    neighbors[3] = grid[(i-1)*n+j+1];
-    neighbors[4] = grid[i*n + j+1];
-    neighbors[5] = grid[(i+1)*n + j+1];
-    neighbors[6] = grid[(i+1)*n + j];
-    neighbors[7] = grid[(i+1)*n + (j-1)];
+State* new_state(int n, int* main_grid) {
+    State* s = (State*) malloc(sizeof(State));
+    s->main_grid = main_grid;
+    s->top = (int*) malloc(sizeof(int)*(n+2));
+    s->bottom = (int*) malloc(sizeof(int)*(n+2));
+    s->left = (int*) malloc(sizeof(int)*(n));
+    s->right = (int*) malloc(sizeof(int)*(n));
+    return s;
+}
+
+void free_state(State* s) {
+    free(s->main_grid);
+    free(s->top);
+    free(s->bottom);
+    free(s->left);
+    free(s->right);
+}
+
+int get(State* s, int n, int i, int j) {
+    if (i == -1) return s->top[j];
+    if (i == n) return s->bottom[j];
+    if (j == -1) return s->left[i-1];
+    if (j == n) return s->right[i-1];
+    return s->main_grid[i*n+j];
+}
+
+void get_cell_neighbors(State* s, int n, int i, int j, int* neighbors) {
+    neighbors[0] = get(s, n, i, j-1);
+    neighbors[1] = get(s, n, i-1, j-1);
+    neighbors[2] = get(s, n, i-1, j);
+    neighbors[3] = get(s, n, i-1, j+1);
+    neighbors[4] = get(s, n, i, j+1);
+    neighbors[5] = get(s, n, i+1, j+1);
+    neighbors[6] = get(s, n, i+1, j);
+    neighbors[7] = get(s, n, i+1, j-1);
 }
 
 /*
@@ -172,11 +206,11 @@ Updates local grid. This just makes the most sense in my brain, it feels sloppy 
 Need to think of a way to consider the corners and edges without needing to copy the whole graph.
 */
 
-void update_state(int* grid, int local_n, HashMap* rt, int* neighbors) {
-    for (int i = 1; i < local_n+1; i++) {
-        for (int j = 1; j < local_n+1; j++) {
-            get_cell_neighbors(grid, local_n, i, j, neighbors);                    
-            grid[i*local_n+j] = hm_lookup(rt, neighbors, 8);
+void update_state(State* s, int local_n, HashMap* rt, int* neighbors) {
+    for (int i = 0; i < local_n; i++) {
+        for (int j = 0; j < local_n; j++) {
+            get_cell_neighbors(s, local_n, i, j, neighbors);                    
+            s->main_grid[i*local_n+j] = hm_lookup(rt, neighbors, 8);
         }
     }
 }
@@ -242,65 +276,71 @@ void start(int n, int i) {
 
     HashMap* rt = load_rule_map("utils/genlife/gol.table");
     int* init_state = load_init_state("test2.bin", n);
-    int* state = embed(init_state, n);
     int current_iter = 0;
     int* neighbors = (int*) malloc(sizeof(int) * 8);
     int* cell_neighbors = (int*) malloc(sizeof(int) * 8);
     int local_n = n / sqrt(size);
+    State* state = new_state(local_n, init_state);
     get_neighbors(neighbors, rank, size);
 
     MPI_Request requests[] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+    MPI_Status stats[] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
     
     // init datatypes
     MPI_Datatype row, col;
-    MPI_Type_contiguous(n, MPI_INTEGER, &row);
-    MPI_Type_vector(n, 1, n + 2, MPI_INTEGER, &col);
+    MPI_Type_contiguous(local_n, MPI_INTEGER, &row);
+    MPI_Type_vector(local_n, 1, local_n, MPI_INTEGER, &col);
     MPI_Type_commit(&row);
     MPI_Type_commit(&col);
     
     while (current_iter < i) {
-        MPI_Isend(&(state[n + 3]), 1, row, neighbors[1], TAG_UP,
+        MPI_Isend(state->main_grid, 1, row, neighbors[1], TAG_UP,
                   MPI_COMM_WORLD, &(requests[0]));
-        MPI_Isend(state + 2*n + 2, 1, MPI_INTEGER, neighbors[2], TAG_UR,
+        MPI_Isend(state->main_grid+local_n-1, 1, MPI_INTEGER, neighbors[2], TAG_UR,
                   MPI_COMM_WORLD, &(requests[1]));
-        MPI_Isend(state + 2*n + 2, 1, col, neighbors[3], TAG_RI,
+        MPI_Isend(state->main_grid+local_n-1, 1, col, neighbors[3], TAG_RI,
                   MPI_COMM_WORLD, &(requests[2]));
-        MPI_Isend(state + (n+2)*n + (n+1), 1, col, neighbors[4], TAG_DR,
+        MPI_Isend(state->main_grid+(local_n*local_n)-1, 1, MPI_INTEGER, neighbors[4], TAG_DR,
                   MPI_COMM_WORLD, &(requests[3]));
-        MPI_Isend(state + (n+2)*n + 1, 1, row, neighbors[5], TAG_DO,
+        MPI_Isend(state->main_grid+local_n*(local_n-1), 1, row, neighbors[5], TAG_DO,
                   MPI_COMM_WORLD, &(requests[4]));
-        MPI_Isend(state + (n+2)*n + 1, 1, MPI_INTEGER, neighbors[6], TAG_DL,
+        MPI_Isend(state->main_grid+local_n*(local_n-1), 1, MPI_INTEGER, neighbors[6], TAG_DL,
                   MPI_COMM_WORLD, &(requests[5]));
-        MPI_Isend(state + n + 3, 1, col, neighbors[7], TAG_LE,
+        MPI_Isend(state->main_grid, 1, col, neighbors[7], TAG_LE,
                   MPI_COMM_WORLD, &(requests[6]));
-        MPI_Isend(state + n + 3, 1, col, neighbors[0], TAG_UL,
+        MPI_Isend(state->main_grid, 1, MPI_INTEGER, neighbors[0], TAG_UL,
                   MPI_COMM_WORLD, &(requests[7]));
 
-        MPI_Recv(&state[1], 1, row, neighbors[1],
+        MPI_Recv(state->top+1, 1, row, neighbors[1],
                  TAG_DO, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state + n + 1, 1, MPI_INTEGER, neighbors[2],
+        MPI_Recv(state->top+local_n+1, 1, MPI_INTEGER, neighbors[2],
                  TAG_DL, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state + 2*n + 3, 1, col, neighbors[3],
+        MPI_Recv(state->right, 1, row, neighbors[3],
                  TAG_LE, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state + (n+3)*(n+1), 1, MPI_INTEGER, neighbors[4],
+        MPI_Recv(state->bottom+local_n+1, 1, MPI_INTEGER, neighbors[4],
                  TAG_UL, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state + (n+2)*(n+1) + 1, 1, row, neighbors[5],
+        MPI_Recv(state->bottom+1, 1, row, neighbors[5],
                  TAG_UP, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state + (n+2)*(n+1), 1, MPI_INTEGER, neighbors[6],
+        MPI_Recv(state->bottom, 1, MPI_INTEGER, neighbors[6],
                  TAG_UR, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state + (n+2), 1, col, neighbors[7],
+        MPI_Recv(state->left, 1, col, neighbors[7],
                  TAG_RI, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state, 1, MPI_INTEGER, neighbors[0],
+        MPI_Recv(state->top, 1, MPI_INTEGER, neighbors[0],
                 TAG_DR, MPI_COMM_WORLD, &stat);
 
+        MPI_Waitall(8, requests, stats);
         update_state(state, local_n, rt, cell_neighbors);
         current_iter++;
     }
 
     
+    printf("how did I get here?");
+    return;
+/*
     hm_free(rt); 
     free(state);
     free(neighbors);
+*/
 }
 
 int main(int argc, char* argv[])
