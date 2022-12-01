@@ -43,14 +43,8 @@ struct State {
 #define C_B_BLACK "\033[0;40m"    // Set background color black
 #define C_B_WHITE "\033[0;47m"
 
-#define TAG_UL  10 // Receiving value for upper left corner
-#define TAG_UR  20 // Receiving value for upper right corner
-#define TAG_DL  30 // Receiving value for down left corner
-#define TAG_DR  40 // Receiving value for down right corner
-#define TAG_UP  50 // Receiving values for upper border
-#define TAG_DO  60 // Receiving values for downside border
-#define TAG_RI  70 // Receiving values for right border
-#define TAG_LE  80 // Receiving values for left border
+#define TAG_U  10 // Receiving value for upper left corner
+#define TAG_D  20 // Receiving value for upper right corner
 
 /*
 Transform the grid to allow each process to more easily access the data they want.
@@ -240,97 +234,47 @@ void get_neighbors(int* neighbors, int rank, int n_procs)
     }
 }
 
-int* unembed(int* old, int n) {
-    int* new_grid = (int*) malloc(sizeof(int) * n * n);
-    int size = (n+2) * (n+2);
-    int new_size = n * n;
-    for (int i = 1; i < n+1; i++) {
-        for (int j = 1; j < n+1; j++) {
-            new_grid[(i-1)*new_size + (j-1)] = old[i*size+j]; 
-        }
-    }
-    free(old);
-    return new_grid;
-}
-
-// embed the n*n state into a larger one (n+2)*(n+2) array (for the boundaries)
-int* embed(int* old, int n) {
-    int* new_grid = (int*) malloc(sizeof(int) * (n+2) * (n+2));
-    int size = n * n;
-    int new_size = (n+2) * (n+2);
-    for (int i = 1; i < n+1; i++) {
-        for (int j = 1; j < n+1; j++) {
-            new_grid[i*(n+2) + j] = old[(i-1)*(n+2) + j-1];
-        }
-    }
-
-    free(old);
-    return new_grid;
-}
-
 void start(int n, int i) {
     int size, rank;
+    int n_up, n_down;
     MPI_Status stat;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     HashMap* rt = load_rule_map("utils/genlife/gol.table");
-    int* init_state = load_init_state("test2.bin", n);
+    int* state = load_init_state("test2.bin", n);
     int current_iter = 0;
-    int* neighbors = (int*) malloc(sizeof(int) * 8);
     int* cell_neighbors = (int*) malloc(sizeof(int) * 8);
-    int local_n = n / sqrt(size);
-    State* state = new_state(local_n, init_state);
-    get_neighbors(neighbors, rank, size);
-
-    MPI_Request requests[] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
-    MPI_Status stats[] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+    int local_n = n / size;
+    int* up_buf = (int*) malloc(sizeof(int) * n);
+    int* down_buf = (int*) malloc(sizeof(int) * n);
     
     // init datatypes
-    MPI_Datatype row, col;
-    MPI_Type_contiguous(local_n, MPI_INTEGER, &row);
-    MPI_Type_vector(local_n, 1, local_n, MPI_INTEGER, &col);
+    MPI_Datatype row;
+    MPI_Type_contiguous(n, MPI_INTEGER, &row);
     MPI_Type_commit(&row);
-    MPI_Type_commit(&col);
+
+    if (rank == 0) {
+        n_up = size-1;
+    } else {
+        n_up = rank-1;
+    }
+
+    if (rank == size-1) {
+        n_down = 0;
+    } else {
+        n_down = rank+1;
+    }
     
     while (current_iter < i) {
-        MPI_Isend(state->main_grid, 1, row, neighbors[1], TAG_UP,
-                  MPI_COMM_WORLD, &(requests[0]));
-        MPI_Isend(state->main_grid+local_n-1, 1, MPI_INTEGER, neighbors[2], TAG_UR,
-                  MPI_COMM_WORLD, &(requests[1]));
-        MPI_Isend(state->main_grid+local_n-1, 1, col, neighbors[3], TAG_RI,
-                  MPI_COMM_WORLD, &(requests[2]));
-        MPI_Isend(state->main_grid+(local_n*local_n)-1, 1, MPI_INTEGER, neighbors[4], TAG_DR,
-                  MPI_COMM_WORLD, &(requests[3]));
-        MPI_Isend(state->main_grid+local_n*(local_n-1), 1, row, neighbors[5], TAG_DO,
-                  MPI_COMM_WORLD, &(requests[4]));
-        MPI_Isend(state->main_grid+local_n*(local_n-1), 1, MPI_INTEGER, neighbors[6], TAG_DL,
-                  MPI_COMM_WORLD, &(requests[5]));
-        MPI_Isend(state->main_grid, 1, col, neighbors[7], TAG_LE,
-                  MPI_COMM_WORLD, &(requests[6]));
-        MPI_Isend(state->main_grid, 1, MPI_INTEGER, neighbors[0], TAG_UL,
-                  MPI_COMM_WORLD, &(requests[7]));
+        if (rank % 2) {
+            MPI_Send(state, 1, row, n_up, TAG_U, MPI_COMM_WORLD);
+            MPI_Send(state + (local_n-1)*n, row, n_down, TAG_D, MPI_COMM_WORLD);
+            MPI_Recv(down_buf, 1, row, n_down, TAG_U, MPI_COMM_WORLD, &stat);
+            MPI_Recv(up_buf, 1, row, n_up, TAG_D, MPI_COMM_WORLD, &stat);
+        }
 
-        MPI_Recv(state->top+1, 1, row, neighbors[1],
-                 TAG_DO, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state->top+local_n+1, 1, MPI_INTEGER, neighbors[2],
-                 TAG_DL, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state->right, 1, row, neighbors[3],
-                 TAG_LE, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state->bottom+local_n+1, 1, MPI_INTEGER, neighbors[4],
-                 TAG_UL, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state->bottom+1, 1, row, neighbors[5],
-                 TAG_UP, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state->bottom, 1, MPI_INTEGER, neighbors[6],
-                 TAG_UR, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state->left, 1, col, neighbors[7],
-                 TAG_RI, MPI_COMM_WORLD, &stat);
-        MPI_Recv(state->top, 1, MPI_INTEGER, neighbors[0],
-                TAG_DR, MPI_COMM_WORLD, &stat);
-
-        MPI_Waitall(8, requests, stats);
-        update_state(state, local_n, rt, cell_neighbors);
-        current_iter++;
+        // receive 1 row from neighobr below
     }
 
     
