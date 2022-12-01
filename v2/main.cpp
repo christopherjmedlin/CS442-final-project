@@ -28,14 +28,6 @@ const char *ARR_COLORS[] = {// Background colors to use for coloring sub grids
     "\033[48;5;218m"        // ROSE
 };
 
-struct State {
-    int* main_grid;
-    int* top;
-    int* right;
-    int* bottom;
-    int* left;
-};
-
 #define NUM_COLORS (sizeof(ARR_COLORS) / sizeof(const char *)) // Get the size of ARR_COLORS
 
 #define S_TOPLEFT "\033[H"        // Set cursor to top left
@@ -46,137 +38,7 @@ struct State {
 #define TAG_U  10 // Receiving value for upper left corner
 #define TAG_D  20 // Receiving value for upper right corner
 
-/*
-Transform the grid to allow each process to more easily access the data they want.
-For example:
-Original Grid: 
-   [0  1  2  3
-    4  5  6  7
-    8  9 10 11
-   12 13 14 15]
-
-Split per process:
- rank 1   rank 2
-    |0  1| |2  3|                 rank 1   rank 2   rank 3     rank 4
-    |4  5| |6  7|  reorganize >> [0 1 4 5  2 3 6 7  8 9 12 13  10 11 14 15]
-    
-   |8   9| |10 11|
-   |12 13| |14 15|
- rank 3    rank 4
-
- This has the potential for adjustment by using MPI_Datatypes
-*/
-void to_array(int* grid, int edge_length)
-{
-    int row, col, ng_row, ng_col, proc_offset, inner_offset;
-    int* copy_grid = new int[TOTAL_GRID_SIZE]{0};
-    std::copy(grid, grid+TOTAL_GRID_SIZE, copy_grid);
-   
-    for (int i = 0; i < TOTAL_GRID_SIZE; i++)
-    {
-        row = i/GRID_WIDTH;
-        col = i%GRID_WIDTH;
-        ng_row = row/edge_length;
-        ng_col = col/edge_length;
-
-        /* Get the offset for particular process */
-        proc_offset = edge_length * (ng_row * GRID_WIDTH + ng_col * edge_length);
-        /* Get the interior offset for particular process */
-        inner_offset = edge_length * (row % edge_length) + (col % edge_length);
-
-        grid[proc_offset + inner_offset] = copy_grid[i];
-    }
-}
-
-/*
-This is to revert the changes made from the above method to print the results. 
-In theory, this only needs to be called any time we want to display what is happening in the result.
-
-For Example, our previous "array" implementation:
-
- rank 0   rank 1   rank 2     rank 3                           [0  1  2  3
-[0 1 4 5  2 3 6 7  8 9 12 13  10 11 14 15] >> reverts back to   4  5  6  7
-                                                                8  9 10 11
-                                                               12 13 14 15]
-Currently, this gets called every iteration for display purposes, but if we will only
-be polling the results every once and awhile, we can limit the calls to this. I'm
-not sure what your plan was regarding the results, but we could potentially get an 
-idea of the expected behavior of, for example, a glider, and poll it at a certain
-iteration when we expect the glider to be in a certian location to ensure it's taking the
-desired path. 
-*/
-
-void to_grid(int* grid, int edge_length)
-{
-    int box_index, box_col, box_row, inbox_offset, inbox_col, inbox_row, new_col, new_row;
-    int* copy_grid = new int[TOTAL_GRID_SIZE]{0};
-    std::copy(grid, grid+TOTAL_GRID_SIZE, copy_grid);
-
-    int box_size = edge_length*edge_length;
-    int boxes_per_row = GRID_WIDTH / edge_length;
-
-    for (int i = 0; i < TOTAL_GRID_SIZE; i++)
-    {
-        box_index = i / box_size;
-        box_col = box_index % boxes_per_row;
-        box_row = box_index / boxes_per_row;
-
-        inbox_offset = i % box_size;
-        inbox_col = inbox_offset % edge_length;
-        inbox_row = inbox_offset / edge_length;
-
-        new_col = box_col * edge_length + inbox_col;
-        new_row = (box_row * edge_length + inbox_row) * GRID_WIDTH;
-
-        grid[new_row + new_col] = copy_grid[i];
-    }
-
-}
-
-/*
-Prints out the grid
-*/
-void draw_grid(int* grid, int edge_length)
-{
-    printf(S_TOPLEFT);
-    for (int y = 0; y < GRID_WIDTH; y++)
-    {
-        for (int x = 0; x < GRID_WIDTH; x++)
-        {
-            if (COLOR_SUB_GRIDS)
-            {
-                int pi = ((int) (y/edge_length))*(GRID_WIDTH/edge_length)+((int)(x/edge_length));
-                printf("%s  %s", grid[y*GRID_WIDTH+x] ? C_B_BLACK : ARR_COLORS[pi%NUM_COLORS], ARR_COLORS[pi%NUM_COLORS]);
-            }
-            else
-            {
-                printf("%s  %s", grid[y*GRID_WIDTH+x] ? C_B_BLACK : C_B_WHITE, C_B_WHITE);
-            }
-        }
-        printf("\n");
-    }
-    printf(C_RST);
-}
-
-State* new_state(int n, int* main_grid) {
-    State* s = (State*) malloc(sizeof(State));
-    s->main_grid = main_grid;
-    s->top = (int*) malloc(sizeof(int)*(n+2));
-    s->bottom = (int*) malloc(sizeof(int)*(n+2));
-    s->left = (int*) malloc(sizeof(int)*(n));
-    s->right = (int*) malloc(sizeof(int)*(n));
-    return s;
-}
-
-void free_state(State* s) {
-    free(s->main_grid);
-    free(s->top);
-    free(s->bottom);
-    free(s->left);
-    free(s->right);
-}
-
-int get(State* s, int n, int i, int j) {
+int get(int* s, int* up_buf, int* down_buf, int n, int local_n) {
     if (i == -1) return s->top[j];
     if (i == n) return s->bottom[j];
     if (j == -1) return s->left[i-1];
@@ -184,8 +46,8 @@ int get(State* s, int n, int i, int j) {
     return s->main_grid[i*n+j];
 }
 
-void get_cell_neighbors(State* s, int n, int i, int j, int* neighbors) {
-    neighbors[0] = get(s, n, i, j-1);
+void get_cell_neighbors(int* s, int* up_buf, int* down_buf, int n, int local_n, int i, int j, int* neighbors) {
+    neighbors[0] = get(s, n, local_n, i, j-1);
     neighbors[1] = get(s, n, i-1, j-1);
     neighbors[2] = get(s, n, i-1, j);
     neighbors[3] = get(s, n, i-1, j+1);
@@ -200,11 +62,11 @@ Updates local grid. This just makes the most sense in my brain, it feels sloppy 
 Need to think of a way to consider the corners and edges without needing to copy the whole graph.
 */
 
-void update_state(State* s, int local_n, HashMap* rt, int* neighbors) {
+void update_state(int* s, int n, int local_n, int* up_buf, int* down_buf, HashMap* rt) {
     for (int i = 0; i < local_n; i++) {
         for (int j = 0; j < local_n; j++) {
-            get_cell_neighbors(s, local_n, i, j, neighbors);                    
-            s->main_grid[i*local_n+j] = hm_lookup(rt, neighbors, 8);
+            get_cell_neighbors(s, up_buf, down_buf, n, local_n, i, j, neighbors);                    
+            s->main_grid[i*n+j] = hm_lookup(rt, neighbors, 8);
         }
     }
 }
@@ -272,9 +134,14 @@ void start(int n, int i) {
             MPI_Send(state + (local_n-1)*n, row, n_down, TAG_D, MPI_COMM_WORLD);
             MPI_Recv(down_buf, 1, row, n_down, TAG_U, MPI_COMM_WORLD, &stat);
             MPI_Recv(up_buf, 1, row, n_up, TAG_D, MPI_COMM_WORLD, &stat);
+        } else {
+            MPI_Recv(down_buf, 1, row, n_down, TAG_U, MPI_COMM_WORLD, &stat);
+            MPI_Recv(up_buf, 1, row, n_up, TAG_d, MPI_COMM_WORLD, &stat);
+            MPI_Send(state, 1, row, n_up, TAG_U, MPI_COMM_WORLD);
+            MPI_Send(state + (local_n-1)*n, row, n_down, TAG_D, MPI_COMM_WORLD);
         }
-
-        // receive 1 row from neighobr below
+        
+        update_state(state, n, local_n, up_buf, down_buf, rt);
     }
 
     
