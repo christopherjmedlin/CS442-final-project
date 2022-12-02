@@ -38,35 +38,43 @@ const char *ARR_COLORS[] = {// Background colors to use for coloring sub grids
 #define TAG_U  10 // Receiving value for upper left corner
 #define TAG_D  20 // Receiving value for upper right corner
 
-int get(int* s, int* up_buf, int* down_buf, int n, int local_n) {
-    if (i == -1) return s->top[j];
-    if (i == n) return s->bottom[j];
-    if (j == -1) return s->left[i-1];
-    if (j == n) return s->right[i-1];
-    return s->main_grid[i*n+j];
+int get(int* s, int* up_buf, int* down_buf, int n, int local_n, int i, int j) {
+    // wrap around j
+    if (j == -1) {
+        j = n-1;    
+    }
+    j %= n;
+
+    // use appropriate buffer depending on which row
+    if (i == -1) {
+        return up_buf[j];
+    } else if (i == local_n) {
+        return down_buf[j];
+    }
+    return s[i*n+j];
 }
 
+// returns all of the values of the cell's neighbors (including itself)
 void get_cell_neighbors(int* s, int* up_buf, int* down_buf, int n, int local_n, int i, int j, int* neighbors) {
-    neighbors[0] = get(s, n, local_n, i, j-1);
-    neighbors[1] = get(s, n, i-1, j-1);
-    neighbors[2] = get(s, n, i-1, j);
-    neighbors[3] = get(s, n, i-1, j+1);
-    neighbors[4] = get(s, n, i, j+1);
-    neighbors[5] = get(s, n, i+1, j+1);
-    neighbors[6] = get(s, n, i+1, j);
-    neighbors[7] = get(s, n, i+1, j-1);
+    neighbors[0] = get(s, up_buf, down_buf, n, local_n, i, j-1);
+    neighbors[1] = get(s, up_buf, down_buf, n, local_n, i-1, j-1);
+    neighbors[2] = get(s, up_buf, down_buf, n, local_n, i-1, j);
+    neighbors[3] = get(s, up_buf, down_buf, n, local_n, i-1, j+1);
+    neighbors[4] = get(s, up_buf, down_buf, n, local_n, i, j+1);
+    neighbors[5] = get(s, up_buf, down_buf, n, local_n, i+1, j+1);
+    neighbors[6] = get(s, up_buf, down_buf, n, local_n, i+1, j);
+    neighbors[7] = get(s, up_buf, down_buf, n, local_n, i+1, j-1);
 }
 
 /*
 Updates local grid. This just makes the most sense in my brain, it feels sloppy though. 
 Need to think of a way to consider the corners and edges without needing to copy the whole graph.
 */
-
-void update_state(int* s, int n, int local_n, int* up_buf, int* down_buf, HashMap* rt) {
+void update_state(int* s, int n, int local_n, int* up_buf, int* down_buf, HashMap* rt, int* neighbors) {
     for (int i = 0; i < local_n; i++) {
         for (int j = 0; j < local_n; j++) {
             get_cell_neighbors(s, up_buf, down_buf, n, local_n, i, j, neighbors);                    
-            s->main_grid[i*n+j] = hm_lookup(rt, neighbors, 8);
+            s[i*n+j] = hm_lookup(rt, neighbors, 8);
         }
     }
 }
@@ -103,7 +111,7 @@ void start(int n, int i) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    HashMap* rt = load_rule_map("utils/genlife/gol.table");
+    HashMap* rt = load_rule_map("gol.table");
     int* state = load_init_state("test2.bin", n);
     int current_iter = 0;
     int* cell_neighbors = (int*) malloc(sizeof(int) * 8);
@@ -131,27 +139,27 @@ void start(int n, int i) {
     while (current_iter < i) {
         if (rank % 2) {
             MPI_Send(state, 1, row, n_up, TAG_U, MPI_COMM_WORLD);
-            MPI_Send(state + (local_n-1)*n, row, n_down, TAG_D, MPI_COMM_WORLD);
+            MPI_Send(state + (local_n-1)*n, 1, row, n_down, TAG_D, MPI_COMM_WORLD);
             MPI_Recv(down_buf, 1, row, n_down, TAG_U, MPI_COMM_WORLD, &stat);
             MPI_Recv(up_buf, 1, row, n_up, TAG_D, MPI_COMM_WORLD, &stat);
         } else {
             MPI_Recv(down_buf, 1, row, n_down, TAG_U, MPI_COMM_WORLD, &stat);
-            MPI_Recv(up_buf, 1, row, n_up, TAG_d, MPI_COMM_WORLD, &stat);
+            MPI_Recv(up_buf, 1, row, n_up, TAG_D, MPI_COMM_WORLD, &stat);
             MPI_Send(state, 1, row, n_up, TAG_U, MPI_COMM_WORLD);
-            MPI_Send(state + (local_n-1)*n, row, n_down, TAG_D, MPI_COMM_WORLD);
+            MPI_Send(state + (local_n-1)*n, 1, row, n_down, TAG_D, MPI_COMM_WORLD);
         }
         
-        update_state(state, n, local_n, up_buf, down_buf, rt);
+        update_state(state, n, local_n, up_buf, down_buf, rt, cell_neighbors);
+        current_iter++;
     }
 
     
     printf("how did I get here?");
-    return;
-/*
     hm_free(rt); 
     free(state);
-    free(neighbors);
-*/
+    free(cell_neighbors);
+    free(up_buf);
+    free(down_buf);
 }
 
 int main(int argc, char* argv[])

@@ -73,6 +73,7 @@ void ll_free(Node* n) {
         free(n->key);
         n = n->next;
         free(prev); 
+        prev = n;
     }
 }
 
