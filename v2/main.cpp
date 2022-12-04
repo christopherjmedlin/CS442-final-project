@@ -112,7 +112,8 @@ void start(int n, int i) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     HashMap* rt = load_rule_map("gol.table");
-    int* state = load_init_state("test2.bin", n);
+    int* state = load_init_state_rows("test2.bin", n);
+    write_state_rows("out.bin", n, state);
     int current_iter = 0;
     int* cell_neighbors = (int*) malloc(sizeof(int) * 8);
     int local_n = n / size;
@@ -153,8 +154,6 @@ void start(int n, int i) {
         current_iter++;
     }
 
-    
-    printf("how did I get here?");
     hm_free(rt); 
     free(state);
     free(cell_neighbors);

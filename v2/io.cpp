@@ -95,6 +95,7 @@ int* load_init_state_rows(char* path, int size) {
     MPI_File fh;
     MPI_Datatype rows;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &procs);
 
     int rows_per_proc = size / procs;
 
@@ -103,7 +104,27 @@ int* load_init_state_rows(char* path, int size) {
     buf = (int*) malloc(sizeof(int)*size*rows_per_proc);
 
     MPI_File_open(MPI_COMM_WORLD, path, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
-    MPI_File_set_view(fh, rank*size*rows_per_proc, MPI_INTEGER, rows, "native", MPI_INFO_NULL);
+    MPI_File_set_view(fh, 4*rank*size*rows_per_proc, MPI_INTEGER, rows, "native", MPI_INFO_NULL);
     MPI_File_read_all(fh, buf, size*rows_per_proc, MPI_INTEGER, &stat); 
     return buf;
+}
+
+void write_state_rows(char* path, int size, int* state) {
+    int n, row, col, local_size;
+    int procs, rank;
+    int* buf;
+    MPI_Status stat;
+    MPI_File fh;
+    MPI_Datatype rows;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &procs);
+
+    int rows_per_proc = size / procs;
+
+    MPI_Type_contiguous(size*rows_per_proc, MPI_INTEGER, &rows);
+    MPI_Type_commit(&rows);
+
+    MPI_File_open(MPI_COMM_WORLD, path, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh);
+    MPI_File_set_view(fh, 4*rank*size*rows_per_proc, MPI_INTEGER, rows, "native", MPI_INFO_NULL);
+    MPI_File_write_all(fh, state, size*rows_per_proc, MPI_INTEGER, &stat); 
 }
