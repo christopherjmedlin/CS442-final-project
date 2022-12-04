@@ -64,6 +64,7 @@ void get_cell_neighbors(int* s, int* up_buf, int* down_buf, int n, int local_n, 
     neighbors[5] = get(s, up_buf, down_buf, n, local_n, i+1, j+1);
     neighbors[6] = get(s, up_buf, down_buf, n, local_n, i+1, j);
     neighbors[7] = get(s, up_buf, down_buf, n, local_n, i+1, j-1);
+    neighbors[8] = get(s, up_buf, down_buf, n, local_n, i, j);
 }
 
 /*
@@ -72,7 +73,7 @@ Need to think of a way to consider the corners and edges without needing to copy
 */
 void update_state(int* s, int n, int local_n, int* up_buf, int* down_buf, HashMap* rt, int* neighbors) {
     for (int i = 0; i < local_n; i++) {
-        for (int j = 0; j < local_n; j++) {
+        for (int j = 0; j < n; j++) {
             get_cell_neighbors(s, up_buf, down_buf, n, local_n, i, j, neighbors);                    
             s[i*n+j] = hm_lookup(rt, neighbors, 8);
         }
@@ -113,9 +114,8 @@ void start(int n, int i) {
 
     HashMap* rt = load_rule_map("gol.table");
     int* state = load_init_state_rows("test2.bin", n);
-    write_state_rows("out.bin", n, state);
     int current_iter = 0;
-    int* cell_neighbors = (int*) malloc(sizeof(int) * 8);
+    int* cell_neighbors = (int*) malloc(sizeof(int) * 9);
     int local_n = n / size;
     int* up_buf = (int*) malloc(sizeof(int) * n);
     int* down_buf = (int*) malloc(sizeof(int) * n);
@@ -153,6 +153,7 @@ void start(int n, int i) {
         update_state(state, n, local_n, up_buf, down_buf, rt, cell_neighbors);
         current_iter++;
     }
+    write_state_rows("out.bin", n, state);
 
     hm_free(rt); 
     free(state);
