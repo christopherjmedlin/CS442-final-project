@@ -53,15 +53,15 @@ int* load_init_state(char* path, int size) {
     MPI_Comm_size(MPI_COMM_WORLD, &procs);
     n = sqrt(procs);
     local_size = size / n;
-    buf = (int*) malloc(sizeof(int) * local_size);
+    buf = (int*) malloc(sizeof(int) * local_size*local_size);
 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     row = rank / n;
     col = rank % n;
     subarr = get_subarray_type(size, local_size, row, col);
     MPI_File_open(MPI_COMM_WORLD, path, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
-    //int disp = 4 * (local_size * local_size * n * row + local_size * col);
-    MPI_File_set_view(fh, 0, MPI_INTEGER, subarr, "native", MPI_INFO_NULL);
+    int disp = 4 * (local_size * local_size * n * row + local_size * col);
+    MPI_File_set_view(fh, disp, MPI_INTEGER, subarr, "native", MPI_INFO_NULL);
     MPI_File_read_all(fh, buf, local_size*local_size, MPI_INTEGER, &stat); 
     return buf;
 }
@@ -82,7 +82,8 @@ void write_state(char* path, int size, int* state) {
     col = rank % n;
     subarr = get_subarray_type(size, local_size, row, col);
     MPI_File_open(MPI_COMM_WORLD, path, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh);
+    int disp = 4 * (local_size * local_size * n * row + local_size * col);
 
-    MPI_File_set_view(fh, 0, MPI_INTEGER, subarr, "native", MPI_INFO_NULL);
+    MPI_File_set_view(fh, disp, MPI_INTEGER, subarr, "native", MPI_INFO_NULL);
     MPI_File_write_all(fh, state, local_size * local_size, MPI_INTEGER, &stat);
 }

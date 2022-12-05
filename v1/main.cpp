@@ -76,6 +76,7 @@ Split per process:
 
  This has the potential for adjustment by using MPI_Datatypes
 */
+/*
 void to_array(int* grid, int edge_length)
 {
     int row, col, ng_row, ng_col, proc_offset, inner_offset;
@@ -89,15 +90,15 @@ void to_array(int* grid, int edge_length)
         ng_row = row/edge_length;
         ng_col = col/edge_length;
 
-        /* Get the offset for particular process */
+        // Get the offset for particular process 
         proc_offset = edge_length * (ng_row * GRID_WIDTH + ng_col * edge_length);
-        /* Get the interior offset for particular process */
+        // Get the interior offset for particular process 
         inner_offset = edge_length * (row % edge_length) + (col % edge_length);
 
         grid[proc_offset + inner_offset] = copy_grid[i];
     }
 }
-
+*/
 /*
 This is to revert the changes made from the above method to print the results. 
 In theory, this only needs to be called any time we want to display what is happening in the result.
@@ -115,7 +116,7 @@ idea of the expected behavior of, for example, a glider, and poll it at a certai
 iteration when we expect the glider to be in a certian location to ensure it's taking the
 desired path. 
 */
-
+/*
 void to_grid(int* grid, int edge_length)
 {
     int box_index, box_col, box_row, inbox_offset, inbox_col, inbox_row, new_col, new_row;
@@ -142,7 +143,7 @@ void to_grid(int* grid, int edge_length)
     }
 
 }
-
+*/
 /*
 Prints out the grid
 */
@@ -215,6 +216,7 @@ void get_cell_neighbors(State* s, int n, int i, int j, int* neighbors) {
     neighbors[5] = get(s, n, i+1, j+1);
     neighbors[6] = get(s, n, i+1, j);
     neighbors[7] = get(s, n, i+1, j-1);
+    neighbors[8] = get(s, n, i, j);
 }
 
 /*
@@ -249,10 +251,11 @@ void get_neighbors(int* neighbors, int rank, int n_procs)
     neighbors[6] = (col && (row<(ppl-1)))? rank+ppl-1 : (col? col-1 : ((row<(ppl-1))? ((row+2)*ppl)-1  : ppl-1 )); // down left
     neighbors[5] = (row<(ppl-1))? rank+ppl : col; // down
     neighbors[4] = (row<(ppl-1) && col<(ppl-1))? rank+ppl+1 : ((row<(ppl-1))? rank+1 : ((col<(ppl-1))? col+1: 0));// down right
-
+/*
     for (int i = 0; i < 8; i++) {
         printf("Rank: %d, Neighbors: %d %d", rank, i, neighbors[i]);
     }
+    */
 }
 
 void start(int n, int i) {
@@ -261,13 +264,17 @@ void start(int n, int i) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    HashMap* rt = load_rule_map("gol.table");
-    int* main_grid = load_init_state("test2.bin", n);
+    char* gol = (char*)"gol.table";
+    char* test = (char*)"test2.bin";
+    char* outp = (char*)"out.bin";
+
+    HashMap* rt = load_rule_map(gol);
+    int* main_grid = load_init_state(test, n);
     int current_iter = 0;
     int* neighbors = (int*) malloc(sizeof(int) * 8);
-    int* cell_neighbors = (int*) malloc(sizeof(int) * 8);
+    int* cell_neighbors = (int*) malloc(sizeof(int) * 9);
     int local_n = n / sqrt(size);
-    State* state = (State*) malloc(sizeof(State));
+    State* state = new_state(local_n, main_grid); //(State*) malloc(sizeof(State)); //????
     get_neighbors(neighbors, rank, size);
 
     MPI_Request* requests = (MPI_Request*) malloc(sizeof(MPI_Request)*8);
@@ -279,7 +286,6 @@ void start(int n, int i) {
     MPI_Type_vector(local_n, 1, local_n, MPI_INTEGER, &col);
     MPI_Type_commit(&row);
     MPI_Type_commit(&col);
-    
     // use these to avoid reusing the send buffer
     int ur_buf;
     int ul_buf;
@@ -301,7 +307,7 @@ void start(int n, int i) {
         ul_buf = state->main_grid[0];
         dr_buf = state->main_grid[(local_n*local_n)-1];
         dl_buf = state->main_grid[local_n*(local_n-1)];
-
+        
         MPI_Isend(&(main_grid[local_n*(local_n-1)]), 1, row, neighbors[5], TAG_DO,
                   MPI_COMM_WORLD, &(requests[4]));
         MPI_Isend(main_grid, 1, row, neighbors[1], TAG_UP,
@@ -345,14 +351,13 @@ void start(int n, int i) {
         state->ul = ul_recv;
         state->dl = dl_recv;
         update_state(state, local_n, rt, cell_neighbors);
-
+        
         MPI_Waitall(8, requests, stats);
 
         current_iter++;
     }
 
-    
-    write_state("out.bin", n, state->main_grid);
+    write_state(outp, n, state->main_grid);
     return;
 //    hm_free(rt); 
     
@@ -388,7 +393,7 @@ int main(int argc, char* argv[])
         printf("Missing arguments.");
         return 1;
     }
-
+    
     start(n, i);
     MPI_Finalize();
     return 0;
