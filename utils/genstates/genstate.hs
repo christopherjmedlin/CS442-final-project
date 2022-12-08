@@ -23,4 +23,4 @@ main = do
     g <- newStdGen
     args <- getArgs
     let n = read (head args)
-    BL.writeFile "state.out" (runPut (evalStateT (randWord (n * n)) g))
+    BL.writeFile ("state." ++ show n ++ ".out") (runPut (evalStateT (randWord (n * n)) g))

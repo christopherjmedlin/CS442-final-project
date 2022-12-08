@@ -2,11 +2,12 @@
 #define HASHMAPH
 
 #include <math.h>
+#include <stdlib.h>
 
 typedef struct Node {
     int* key;
     int val;
-    Node* next;
+    struct Node* next;
 } Node;
 
 typedef struct HashMap {

@@ -3,6 +3,7 @@
 
 #include <mpi.h>
 #include "hashmap.h"
+#include <stdlib.h>
 
 HashMap* load_rule_map(char* path);
 
