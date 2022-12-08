@@ -265,7 +265,7 @@ void start(int n, int i) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     char* gol = (char*)"gol.table";
-    char* test = (char*)"test2.bin";
+    char* test = (char*)"../tests/state.256.out";
     char* outp = (char*)"out.bin";
 
     HashMap* rt = load_rule_map(gol);

@@ -1,5 +1,5 @@
 {-
- - Generates the rules for Conway's GOL
+ - Generates random n x n grid
 -}
 module Main where
 
@@ -7,15 +7,20 @@ import qualified Data.ByteString.Lazy as BL
 import Data.Binary.Put
 import System.Random
 import Control.Monad.State.Lazy
+import System.Environment
 
-randWord :: StateT StdGen PutM ()
-randWord = do
+randWord :: Integer -> StateT StdGen PutM ()
+randWord 0 = return ()
+randWord k = do
     g <- get
-    let (w, g) = genWord32R 1 g
-    put g
+    let (w, newg) = genWord32R 1 g
+    put newg
     lift $ putWord32le w
+    randWord (k - 1) 
 
 main :: IO ()
 main = do
     g <- newStdGen
-    BL.writeFile "gol.table" (runPut (evalStateT randWord g))
+    args <- getArgs
+    let n = read (head args)
+    BL.writeFile "state.out" (runPut (evalStateT (randWord (n * n)) g))
