@@ -1,0 +1,18 @@
+N: 64Time per iteration: 0.000041
+Time for IO: 0.196870
+N: 128Time per iteration: 0.000130
+Time for IO: 0.192852
+N: 256Time per iteration: 0.000483
+Time for IO: 0.198849
+N: 320Time per iteration: 0.000748
+Time for IO: 0.192393
+N: 384Time per iteration: 0.001074
+Time for IO: 0.224703
+N: 448Time per iteration: 0.001475
+Time for IO: 0.228679
+N: 512Time per iteration: 0.001921
+Time for IO: 0.294692
+N: 576Time per iteration: 0.002425
+Time for IO: 0.336115
+N: 640Time per iteration: 0.002994
+Time for IO: 0.362315
