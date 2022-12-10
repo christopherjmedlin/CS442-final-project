@@ -1,20 +1,20 @@
-N: 16 Time per iteration: 0.000222
-Time for IO: 0.096842
-N: 64 Time per iteration: 0.000272
-Time for IO: 0.151296
-N: 128 Time per iteration: 0.000796
-Time for IO: 0.099513
-N: 256 Time per iteration: 0.002081
-Time for IO: 0.092415
-N: 320 Time per iteration: 0.003123
-Time for IO: 0.101114
-N: 384 Time per iteration: 0.004410
-Time for IO: 0.099072
-N: 448 Time per iteration: 0.005900
-Time for IO: 0.108298
-N: 512 Time per iteration: 0.007719
-Time for IO: 0.157082
-N: 576 Time per iteration: 0.009759
-Time for IO: 0.126309
-N: 640 Time per iteration: 0.012058
-Time for IO: 0.118042
+N: 16Time per iteration: 0.000214
+IO Time: 0.003161
+N: 64Time per iteration: 0.000388
+IO Time: 0.003618
+N: 128Time per iteration: 0.000765
+IO Time: 0.004002
+N: 256Time per iteration: 0.002178
+IO Time: 0.007148
+N: 320Time per iteration: 0.003216
+IO Time: 0.008407
+N: 384Time per iteration: 0.004410
+IO Time: 0.010525
+N: 448Time per iteration: 0.006011
+IO Time: 0.013325
+N: 512Time per iteration: 0.007721
+IO Time: 0.014745
+N: 576Time per iteration: 0.009707
+IO Time: 0.017575
+N: 640Time per iteration: 0.012029
+IO Time: 0.020703
