@@ -5,7 +5,6 @@
 #include <math.h>
 #include <mpi.h>
 #include <time.h>
-#include <algorithm>
 #include "io.h"
 #include "hashmap.h"
 
@@ -44,19 +43,7 @@ const char *ARR_COLORS[] = {// Background colors to use for coloring sub grids
 #define TAG_RI  70 // Receiving values for right border
 #define TAG_LE  80 // Receiving values for left border
 
-void free_state(State* s) {
-    free(s->main_grid);
-    free(s->top);
-    free(s->bottom);
-    free(s->left);
-    free(s->right);
-    free(s->ur);
-    free(s->dr);
-    free(s->ul);
-    free(s->dl);
-}
-
-int get(int* main_grid, int n, int i, int j {
+int get(int* main_grid, int n, int i, int j,
         int* top,
         int* ur,
         int* right,
@@ -67,8 +54,8 @@ int get(int* main_grid, int n, int i, int j {
         int* ul) {
     if (i == -1 && j == -1) return *ul;
     if (i == -1 && j == n) return *ur;
-    if (i == n && j == -1) return *dl;
-    if (i == n && j == n) return *dr;
+    if (i == n && j == -1) return *bl;
+    if (i == n && j == n) return *br;
     if (i == -1) return top[j];
     if (i == n) return bottom[j];
     if (j == -1) return left[i];
@@ -76,7 +63,7 @@ int get(int* main_grid, int n, int i, int j {
     return main_grid[i*n+j];
 }
 
-void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors {
+void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors,
                         int* top,
                         int* ur,
                         int* right,
@@ -85,7 +72,7 @@ void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors {
                         int* bl,
                         int* left,
                         int* ul) {
-    neighbors[0] = get(s, n, i, j-1
+    neighbors[0] = get(main_grid, n, i, j-1,
                        top,
                        ur,
                        right,
@@ -94,7 +81,7 @@ void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors {
                        bl,
                        left,
                        ul);
-    neighbors[1] = get(s, n, i-1, j-1
+    neighbors[1] = get(main_grid, n, i-1, j-1,
                        top,
                        ur,
                        right,
@@ -103,7 +90,7 @@ void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors {
                        bl,
                        left,
                        ul);
-    neighbors[2] = get(s, n, i-1, j
+    neighbors[2] = get(main_grid, n, i-1, j,
                        top,
                        ur,
                        right,
@@ -112,7 +99,7 @@ void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors {
                        bl,
                        left,
                        ul);
-    neighbors[3] = get(s, n, i-1, j+1
+    neighbors[3] = get(main_grid, n, i-1, j+1,
                        top,
                        ur,
                        right,
@@ -121,7 +108,7 @@ void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors {
                        bl,
                        left,
                        ul);
-    neighbors[4] = get(s, n, i, j+1
+    neighbors[4] = get(main_grid, n, i, j+1,
                        top,
                        ur,
                        right,
@@ -130,7 +117,7 @@ void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors {
                        bl,
                        left,
                        ul);
-    neighbors[5] = get(s, n, i+1, j+1
+    neighbors[5] = get(main_grid, n, i+1, j+1,
                        top,
                        ur,
                        right,
@@ -139,7 +126,7 @@ void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors {
                        bl,
                        left,
                        ul);
-    neighbors[6] = get(s, n, i+1, j
+    neighbors[6] = get(main_grid, n, i+1, j,
                        top,
                        ur,
                        right,
@@ -148,7 +135,7 @@ void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors {
                        bl,
                        left,
                        ul);
-    neighbors[7] = get(s, n, i+1, j-1
+    neighbors[7] = get(main_grid, n, i+1, j-1,
                        top,
                        ur,
                        right,
@@ -157,6 +144,7 @@ void get_cell_neighbors(int* main_grid, int n, int i, int j, int* neighbors {
                        bl,
                        left,
                        ul);
+    neighbors[8] = main_grid[i*n+j];
 }
 
 /*
@@ -175,7 +163,7 @@ void update_state(int* local_grid, int local_n, HashMap* rt, int* neighbors,
                   int* ul) {
     for (int i = 0; i < local_n; i++) {
         for (int j = 0; j < local_n; j++) {
-            get_cell_neighbors(s, local_n, i, j, neighbors,
+            get_cell_neighbors(local_grid, local_n, i, j, neighbors,
                                top,
                                ur,
                                right,
@@ -184,7 +172,7 @@ void update_state(int* local_grid, int local_n, HashMap* rt, int* neighbors,
                                bl,
                                left,
                                ul);                    
-            s->main_grid[i*local_n+j] = hm_lookup(rt, neighbors, 8);
+            local_grid[i*local_n+j] = hm_lookup(rt, neighbors, 8);
         }
     }
 }
@@ -216,48 +204,56 @@ void get_neighbors(int* neighbors, int rank, int n_procs)
 void start(int n, int i) {
     int rank, size;
     int* neighbors = malloc(sizeof(int) * 8);
-    MPI_Comm_rank(&rank, MPI_COMM_WORLD);
-    MPI_Comm_size(&size, MPI_COMM_WORLD);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
     get_neighbors(neighbors, rank, size);
-    int local_n = n / sqrt(size)
-    
+    int local_n = n / sqrt(size);
     int* local_grid = load_init_state("test2.bin", n);
-    HashMap rt = load_rule_map("gol.table");
+    HashMap* rt = load_rule_map("gol.table");
+    int* cell_neighbors = malloc(sizeof(int)*9);
 
     MPI_Comm graph_comm;
     MPI_Dist_graph_create_adjacent(
             MPI_COMM_WORLD, 8, neighbors, MPI_UNWEIGHTED, 
                             8, neighbors, MPI_UNWEIGHTED,
-                            MPI_INFO_NULL, 0, &comm);
-    int* counts = {1,local_n,1,local_n,1,local_n,1,local_n};
-    int* displs = {0,1,local_n+1,local_n+2,2*local_n+2,2*local_n+3,3*local_n+3,3*local_n+4}
-    int* send = malloc(sizeof(int)*(4+4*local_n))
-    int* recv = malloc(sizeof(int)*(4+4*local_n))
+                            MPI_INFO_NULL, 0, &graph_comm);
+    int counts[] = {1,local_n,1,local_n,1,local_n,1,local_n};
+    int displs[] = {0,1,local_n+1,local_n+2,2*local_n+2,2*local_n+3,3*local_n+3,3*local_n+4};
+    int* send = malloc(sizeof(int)*(4+4*local_n));
+    int* recv = malloc(sizeof(int)*(4+4*local_n));
    
     for (int curr_iter = 0; curr_iter < i; curr_iter++) {
         // ul
-        send[0] = local_grid[0] 
+        send[0] = local_grid[0];
         // ur
-        send[1+local_n] = local_grid[local_n-1]
+        send[1+local_n] = local_grid[local_n-1];
         // dr
-        send[2+2*local_n] = local_grid[local_n*local_n-1]
+        send[2+2*local_n] = local_grid[local_n*local_n-1];
         // dl
-        send[2+2*local_n] = local_grid[local_n*local_n-1]
+        send[2+2*local_n] = local_grid[local_n*local_n-1];
         for (int i = 0; i < local_n; i++) {
             // top
             send[1+i] = local_grid[i];
             // right
-            send[1+local_n+1+i] = local_grid[local_n*(i+1) - 1]
+            send[1+local_n+1+i] = local_grid[local_n*(i+1) - 1];
             // bottom
-            send[3+2*local_n+i] = local_grid[local_n*(local_n-1)+i]
+            send[3+2*local_n+i] = local_grid[local_n*(local_n-1)+i];
             // left
-            send[4+3*local_n+i] = local_grid[local_n*i]
+            send[4+3*local_n+i] = local_grid[local_n*i];
         }
         
         MPI_Neighbor_alltoallv(send, counts, displs, MPI_INTEGER,
-                               recvbuf, counts, dipls, MPI_INTEGER,
+                               recv, counts, displs, MPI_INTEGER,
                                graph_comm);
-        //update_state(
+        update_state(local_grid, local_n, rt, cell_neighbors,
+                     recv + displs[1],
+                     recv + displs[2],
+                     recv + displs[3],
+                     recv + displs[4],
+                     recv + displs[5],
+                     recv + displs[6],
+                     recv + displs[7],
+                     recv + displs[0]);
     }
 }
 
@@ -273,11 +269,11 @@ int main(int argc, char* argv[])
         switch (c) {
             case 'n':
                 n = atoi(optarg);
-                hasN = true;
+                hasN = 1;
                 break;
             case 'i':
                 i = atoi(optarg);
-                hasI = true;
+                hasI = 1;
                 break;
         }
     }

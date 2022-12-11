@@ -2,6 +2,7 @@
 #define IOH
 
 #include <mpi.h>
+#include <stdlib.h>
 #include "hashmap.h"
 
 HashMap* load_rule_map(char* path);
