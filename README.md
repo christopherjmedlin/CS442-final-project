@@ -157,13 +157,19 @@ MPI + OpenMP.
 \"Strategies for Parallel Execution of Cellular Automata in Distributed
 Memory Architectures,\" 2019 27th Euromicro International Conference on
 Parallel, Distributed and Network-Based Processing (PDP), 2019, pp.
-406-413, doi: 10.1109/EMPDP.2019.8671639. Blas, Javier Garc, et al.
+406-413, doi: 10.1109/EMPDP.2019.8671639. 
+
+Blas, Javier Garc, et al.
 "View-Based Collective I/O for MPI-IO." 2008 Eighth IEEE International
 Symposium on Cluster Computing and the Grid (CCGRID), 2008,
-https://doi.org/10.1109/ccgrid.2008.85. Conway's Game of Life."
+https://doi.org/10.1109/ccgrid.2008.85. 
+
+"Conway's Game of Life."
 Wikipedia, Wikimedia Foundation, 28 Nov. 2022,
 https://en.wikipedia.org/wiki/Conway%27s\_Game\_of\_Life
-\#/media/File:Game\_of\_life\_loaf.svg Gardner, Martin. " The Fantastic
+\#/media/File:Game\_of\_life\_loaf.svg 
+
+Gardner, Martin. " The Fantastic
 Combinations of John Conway's New Solitaire Game 'Life.'" Scientific
 American, Oct. 1970, pp. 120--123.
 https://github.com/christopherjmedlin/cs442-final-project
